@@ -204,7 +204,7 @@ a.chip:hover{border-color:var(--hi);color:var(--hi)}
 .panel{padding:22px;margin-bottom:16px}
 .panel h3{font-family:var(--serif);font-size:28px;margin-bottom:4px}
 .panel .hint{color:var(--muted);font-size:13px;margin-bottom:18px}
-.toggle{position:relative;width:44px;height:26px;flex:none}
+.toggle{position:relative;width:44px;height:26px;flex:none;display:inline-block;cursor:pointer}
 .toggle input{opacity:0;width:0;height:0;position:absolute}
 .toggle span{position:absolute;inset:0;border-radius:99px;background:var(--panel2);border:1px solid var(--line2);transition:.2s;cursor:pointer}
 .toggle span::after{content:"";position:absolute;left:3px;top:3px;width:18px;height:18px;border-radius:50%;background:var(--muted);transition:.2s}
@@ -786,7 +786,7 @@ function tabBlocks(){
     <div class="quick"><button class="btn gh sm" onclick="quickBlock(0)">Bloquear hoy</button><button class="btn gh sm" onclick="quickBlock(1)">Bloquear mañana</button><button class="btn gh sm" onclick="quickBlock(-1)">Resto de hoy</button></div>
     <form onsubmit="saveBlock(event,this)">
       <div class="row2"><div class="field"><label>Desde (fecha)</label><input type="date" name="d1" value="${today}" required></div><div class="field"><label>Hasta (fecha)</label><input type="date" name="d2" value="${today}" required></div></div>
-      <label class="chk"><span class="toggle"><input type="checkbox" name="all" checked onchange="this.form.querySelector('#hrs').style.display=this.checked?'none':'grid'"><span></span></span> Todo el día</label>
+      <label class="chk"><span class="toggle" onclick="event.preventDefault();const i=this.querySelector('input');i.checked=!i.checked;i.dispatchEvent(new Event('change'))"><input type="checkbox" name="all" checked onchange="this.form.querySelector('#hrs').style.display=this.checked?'none':'grid'"><span></span></span> Todo el día</label>
       <div class="row2" id="hrs" style="display:none"><div class="field"><label>Hora inicio</label><input type="time" name="t1" value="14:00"></div><div class="field"><label>Hora fin</label><input type="time" name="t2" value="18:00"></div></div>
       <div class="field"><label>Motivo (solo lo ves tú)</label><input name="reason" placeholder="Ej: Viaje a Cartagena, evento de equipo…"></div>
       <div class="err" id="berr"></div>
@@ -814,7 +814,7 @@ async function unblock(id){ try{ await api('/api/admin/unblock',{method:'POST',a
 function tabHours(){
   const c=A.cfg, order=[1,2,3,4,5,6,0], r=c.rules;
   return `<div class="card panel"><h3>Horario semanal</h3><p class="hint">Hora de Colombia. Puedes tener varios bloques por día (ej. mañana y tarde).</p>
-  ${order.map(d=>{ const rs=c.availability[d]||[]; return `<div class="wd"><div class="nm"><span class="toggle"><input type="checkbox" ${rs.length?'checked':''} onchange="toggleDay(${d},this.checked)"><span></span></span><span class="cap">${DAYS[d]}</span></div>
+  ${order.map(d=>{ const rs=c.availability[d]||[]; return `<div class="wd"><div class="nm"><label class="toggle"><input type="checkbox" ${rs.length?'checked':''} onchange="toggleDay(${d},this.checked)"><span></span></label><span class="cap">${DAYS[d]}</span></div>
     <div class="ranges">${rs.length?rs.map((x,i)=>`<div class="range"><input type="time" value="${x[0]}" onchange="A.cfg.availability[${d}][${i}][0]=this.value"><span class="muted">–</span><input type="time" value="${x[1]}" onchange="A.cfg.availability[${d}][${i}][1]=this.value"><button class="iconbtn" onclick="A.cfg.availability[${d}].splice(${i},1);renderAdmin()">${I.x}</button></div>`).join('')+`<button class="addr" onclick="A.cfg.availability[${d}].push(['15:00','18:00']);renderAdmin()">+ Agregar bloque</button>`:'<div class="closed">No disponible</div>'}</div></div>`; }).join('')}
   </div>
   <div class="card panel"><h3>Reglas inteligentes</h3><p class="hint">Controla cómo y cuándo te pueden agendar.</p>
@@ -829,7 +829,7 @@ function toggleDay(d,on){ A.cfg.availability[d]= on?[['08:00','12:00'],['14:00',
 function tabEvents(){
   return `<p class="hint muted" style="margin-bottom:14px">Los servicios que tus prospectos y clientes pueden reservar.</p>
   ${A.cfg.events.map((e,i)=>`<div class="card evedit" style="--c:${h(e.color)}">
-    <div class="hd"><input value="${h(e.name)}" onchange="A.cfg.events[${i}].name=this.value"><span class="toggle" title="Activo"><input type="checkbox" ${e.active!==false?'checked':''} onchange="A.cfg.events[${i}].active=this.checked"><span></span></span><button class="iconbtn" onclick="if(confirm('¿Eliminar servicio?')){A.cfg.events.splice(${i},1);renderAdmin()}">${I.trash}</button></div>
+    <div class="hd"><input value="${h(e.name)}" onchange="A.cfg.events[${i}].name=this.value"><label class="toggle" title="Activo"><input type="checkbox" ${e.active!==false?'checked':''} onchange="A.cfg.events[${i}].active=this.checked"><span></span></label><button class="iconbtn" onclick="if(confirm('¿Eliminar servicio?')){A.cfg.events.splice(${i},1);renderAdmin()}">${I.trash}</button></div>
     <div class="field"><label>Descripción</label><textarea style="min-height:60px" onchange="A.cfg.events[${i}].desc=this.value">${h(e.desc)}</textarea></div>
     <div class="row3">
       <div class="field"><label>Duración (min)</label><input type="number" min="5" step="5" value="${e.duration}" onchange="A.cfg.events[${i}].duration=Math.max(5,+this.value||30)"></div>
