@@ -129,6 +129,11 @@ a.chip:hover{border-color:var(--hi);color:var(--hi)}
 .slot button{flex:1;padding:13px;border-radius:12px;border:1px solid color-mix(in srgb,var(--c,var(--hi)) 40%,transparent);color:var(--c,var(--hi));font-weight:700;font-size:14px;transition:.2s}
 .slot button:hover{background:color-mix(in srgb,var(--c,var(--hi)) 12%,transparent)}
 .slot.on .t{flex:0 0 46%;background:var(--panel2);color:var(--text);border-color:var(--line2)}
+.slot.rsv button{cursor:not-allowed;border:1px dashed var(--line2);color:var(--faint);background:repeating-linear-gradient(135deg,transparent 0 8px,rgba(255,255,255,.02) 8px 16px);display:flex;justify-content:space-between;align-items:center;gap:6px;padding:13px 12px;white-space:nowrap}
+.slot.rsv button:hover{background:repeating-linear-gradient(135deg,transparent 0 8px,rgba(255,255,255,.02) 8px 16px)}
+.slot.rsv span{text-decoration:line-through;font-weight:600}
+.slot.rsv em{font-style:normal;font-size:9.5px;letter-spacing:.5px;text-transform:uppercase;font-weight:700}
+.day.av.full{color:var(--faint);background:transparent;border-style:dashed}
 .slot .ok,.slot .ok:hover{background:var(--c,var(--hi));color:var(--ink);border-color:var(--c,var(--hi));animation:pop .25s}
 @keyframes pop{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:none}}
 .empty{color:var(--muted);font-size:13.5px;padding:18px;border:1px dashed var(--line2);border-radius:14px;text-align:center}
@@ -496,23 +501,33 @@ function nextAvailLabel(){
   return '—';
 }
 
-function slotsFor(ev,y,m,d){
+/* Todos los horarios del día: {s, taken}.
+   Se muestra la jornada completa (desde la hora más temprana hasta la más tarde de tu semana).
+   Todo lo que no esté libre —fuera de tu horario, citas, bloqueos o descansos— sale como "reservado". */
+function slotsAll(ev,y,m,d){
   const c=S.cfg, off=c.utcOffset, r=c.rules, wd=new Date(Date.UTC(y,m,d)).getUTCDay();
-  const wins=c.availability[wd]||[], out=[], now=Date.now();
+  const wins=(c.availability[wd]||[]).map(([a,b])=>[toMin(a),toMin(b)]), now=Date.now();
+  const allWins=Object.values(c.availability).flat().map(([a,b])=>[toMin(a),toMin(b)]);
+  if(!allWins.length) return [];
+  const gMin=Math.min(...allWins.map(w=>w[0])), gMax=Math.max(...allWins.map(w=>w[1]));
   const minT=now+r.minNoticeHours*3600000, maxT=now+r.maxDaysAhead*86400000, buf=r.bufferMin*60000;
   const bk=S.busy.filter(b=>b.t==='k'), bl=S.busy.filter(b=>b.t==='b');
-  if(r.dailyMax>0){ const ds=ownerUTC(y,m,d,0,off); if(bk.filter(b=>b.s>=ds&&b.s<ds+86400000).length>=r.dailyMax) return []; }
-  for(const [a,b] of wins){
-    for(let t=toMin(a); t+ev.duration<=toMin(b); t+=r.slotStepMin){
-      const s=ownerUTC(y,m,d,t,off), e=s+ev.duration*60000;
-      if(s<minT||s>maxT) continue;
-      if(bk.some(x=>s<x.e+buf&&e+buf>x.s)) continue;
-      if(bl.some(x=>s<x.e&&e>x.s)) continue;
-      out.push(s);
-    }
+  let full=false;
+  if(r.dailyMax>0){ const ds=ownerUTC(y,m,d,0,off); full=bk.filter(b=>b.s>=ds&&b.s<ds+86400000).length>=r.dailyMax; }
+  const times=new Set();
+  for(let t=gMin; t+ev.duration<=gMax; t+=r.slotStepMin) times.add(t);
+  for(const [a,b] of wins) for(let t=a; t+ev.duration<=b; t+=r.slotStepMin) times.add(t);
+  const out=[];
+  for(const t of [...times].sort((p,q)=>p-q)){
+    const s=ownerUTC(y,m,d,t,off), e=s+ev.duration*60000;
+    if(s<minT||s>maxT) continue;
+    const inWin = wins.some(([a,b])=>a<=t&&t+ev.duration<=b);
+    const taken = !inWin || full || bk.some(x=>s<x.e+buf&&e+buf>x.s) || bl.some(x=>s<x.e&&e>x.s);
+    out.push({s,taken});
   }
   return out;
 }
+const slotsFor = (ev,y,m,d) => slotsAll(ev,y,m,d).filter(x=>!x.taken).map(x=>x.s);
 
 function pickEvent(id){
   S.ev = S.cfg.events.find(e=>e.id===id); S.slot=null;
@@ -545,14 +560,14 @@ function renderCal(){
   const canPrev = y>t.y || (y===t.y && m>t.m), canNext = y<maxD.y || (y===maxD.y && m<maxD.m);
   let cells = DAYS_S.map(d=>`<div class="dow">${d}</div>`).join('') + '<div></div>'.repeat(first);
   for(let d=1; d<=dim; d++){
-    const av = slotsFor(e,y,m,d).length>0, sel = S.date && S.date.y===y && S.date.m===m && S.date.d===d, today = t.y===y&&t.m===m&&t.d===d;
-    cells += av ? `<button class="day av${sel?' sel':''}${today?' today':''}" onclick="pickDate(${y},${m},${d})">${d}</button>` : `<div class="day${today?' today':''}">${d}</div>`;
+    const all = slotsAll(e,y,m,d), free = all.some(x=>!x.taken), av = all.length>0, sel = S.date && S.date.y===y && S.date.m===m && S.date.d===d, today = t.y===y&&t.m===m&&t.d===d;
+    cells += av ? `<button class="day av${free?'':' full'}${sel?' sel':''}${today?' today':''}" onclick="pickDate(${y},${m},${d})">${d}</button>` : `<div class="day${today?' today':''}">${d}</div>`;
   }
   let slotsHTML='';
   if(S.date){
-    const sl=slotsFor(e,S.date.y,S.date.m,S.date.d), dlabel=`${DAYS[new Date(Date.UTC(S.date.y,S.date.m,S.date.d)).getUTCDay()]} ${S.date.d} de ${MONTHS[S.date.m]}`;
-    slotsHTML = `<div class="slots fade"><h4>${dlabel}</h4><div class="sub">Elige un horario</div>
-      <div class="slist">${sl.length?sl.map(s=>S.slot===s?`<div class="slot on"><button class="t">${tzTime(s,viewTz())}</button><button class="ok" onclick="S.view='form';render()">Siguiente</button></div>`:`<div class="slot"><button onclick="S.slot=${s};render()">${tzTime(s,viewTz())}</button></div>`).join(''):'<div class="empty">Sin espacios este día</div>'}</div></div>`;
+    const sl=slotsAll(e,S.date.y,S.date.m,S.date.d), nfree=sl.filter(x=>!x.taken).length, dlabel=`${DAYS[new Date(Date.UTC(S.date.y,S.date.m,S.date.d)).getUTCDay()]} ${S.date.d} de ${MONTHS[S.date.m]}`;
+    slotsHTML = `<div class="slots fade"><h4>${dlabel}</h4><div class="sub">${sl.length&&!nfree?'Día completo · todos los horarios están reservados':'Elige un horario'}</div>
+      <div class="slist">${sl.length?sl.map(({s,taken})=>taken?`<div class="slot rsv"><button disabled><span>${tzTime(s,viewTz())}</span><em>Horario reservado</em></button></div>`:S.slot===s?`<div class="slot on"><button class="t">${tzTime(s,viewTz())}</button><button class="ok" onclick="S.view='form';render()">Siguiente</button></div>`:`<div class="slot"><button onclick="S.slot=${s};render()">${tzTime(s,viewTz())}</button></div>`).join(''):'<div class="empty">Sin espacios este día</div>'}</div></div>`;
   } else slotsHTML = `<div class="slots"><div class="empty">No hay espacios disponibles en este momento. Escríbeme por WhatsApp y lo coordinamos.</div></div>`;
   const tzOpts = S.tz!==S.cfg.timezone ? `<select onchange="S.tzMode=this.value;render()"><option value="local"${S.tzMode==='local'?' selected':''}>Mi hora (${h(S.tz)})</option><option value="owner"${S.tzMode==='owner'?' selected':''}>Hora de Colombia</option></select>` : `<span>${h(S.tz)}</span>`;
   $('#root').innerHTML = topbar() + `
